@@ -8,79 +8,28 @@
         Height="760"
         Width="1200"
         MinHeight="600"
-        MinWidth="900"
+        MinWidth="980"
         WindowStartupLocation="CenterScreen"
         WindowState="Normal"
         ShowInTaskbar="True">
     <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0"
-                BorderBrush="#DDD"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="10"
-                Margin="0,0,0,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="220"/>
-                    <ColumnDefinition Width="180"/>
-                    <ColumnDefinition Width="110"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,10,0">
-                    <TextBlock Text="Endpoint" FontWeight="Bold"/>
-                    <TextBox x:Name="EndpointTextBox"
-                             Margin="0,4,0,0"
-                             Height="28"/>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Orientation="Vertical" Margin="0,0,10,0">
-                    <TextBlock Text="Model" FontWeight="Bold"/>
-                    <ComboBox x:Name="ModelComboBox"
-                              Margin="0,4,0,0"
-                              Height="28"
-                              IsEditable="True"
-                              IsTextSearchEnabled="True"
-                              DisplayMemberPath="Name"
-                              SelectedValuePath="Name"/>
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" Orientation="Vertical" Margin="0,0,10,0">
-                    <TextBlock Text="Status" FontWeight="Bold"/>
-                    <TextBlock x:Name="StatusTextBlock"
-                               Text="Not tested"
-                               Margin="0,8,0,0"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-
-                <Button Grid.Column="3"
-                        x:Name="TestConnectionButton"
-                        Content="Test"
-                        Height="32"
-                        Width="90"
-                        VerticalAlignment="Bottom"
-                        Click="TestConnectionButton_Click"/>
-            </Grid>
-        </Border>
-
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2.2*"/>
-                <ColumnDefinition Width="1.3*"/>
+                <ColumnDefinition Width="2.15*" MinWidth="320"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="1.45*" MinWidth="600"/>
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0"
                     BorderBrush="#DDD"
                     BorderThickness="1"
                     CornerRadius="6"
-                    Padding="10"
-                    Margin="0,0,10,0">
+                    Padding="10">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -105,25 +54,45 @@
 
                     <ListBox Grid.Row="1"
                              x:Name="ChatListBox"
-                             HorizontalContentAlignment="Stretch">
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.CanContentScroll="False">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment"
+                                        Value="Stretch"/>
+                                <Setter Property="Padding"
+                                        Value="0"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Border BorderBrush="#E5E5E5"
                                         BorderThickness="1"
                                         CornerRadius="6"
                                         Padding="8"
-                                        Margin="0,0,0,8">
-                                    <StackPanel>
+                                        Margin="0,0,0,8"
+                                        MaxWidth="{Binding ElementName=ChatListBox, Path=ActualWidth}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
                                         <TextBlock Text="{Binding Role}"
+                                                   Grid.Row="0"
                                                    FontWeight="Bold"/>
                                         <TextBlock Text="{Binding Content}"
+                                                   Grid.Row="1"
                                                    TextWrapping="Wrap"
+                                                   MaxWidth="{Binding ElementName=ChatListBox, Path=ActualWidth}"
                                                    Margin="0,6,0,0"/>
                                         <TextBlock Text="{Binding Timestamp}"
+                                                   Grid.Row="2"
                                                    FontSize="11"
                                                    Opacity="0.65"
                                                    Margin="0,6,0,0"/>
-                                    </StackPanel>
+                                    </Grid>
                                 </Border>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -131,69 +100,683 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Column="1"
+            <GridSplitter Grid.Column="1"
+                          Width="10"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="True"
+                          Background="#E6E6E6"/>
+
+            <Border Grid.Column="2"
                     BorderBrush="#DDD"
                     BorderThickness="1"
                     CornerRadius="6"
                     Padding="10">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+                <TabControl>
+                    <TabItem Header="Output">
+                        <Grid Margin="0,6,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
-                        <TextBlock Text="Tools / Output"
-                                   FontSize="18"
-                                   FontWeight="Bold"/>
-                        <TextBlock x:Name="WorkspaceTextBlock"
-                                   Text="Workspace: (not set)"
-                                   FontSize="11"
-                                   Opacity="0.7"
-                                   Margin="0,2,0,0"/>
-                    </StackPanel>
+                            <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                <TextBlock Text="Tools / Output"
+                                           FontSize="18"
+                                           FontWeight="Bold"/>
+                                <TextBlock x:Name="WorkspaceTextBlock"
+                                           Text="Workspace: (not set)"
+                                           FontSize="11"
+                                           Opacity="0.7"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
 
-                    <WrapPanel Grid.Row="1" Margin="0,0,0,10">
-                        <Button Content="List Folder"
-                                Width="100"
-                                Margin="0,0,8,8"
-                                Click="ListFolderButton_Click"/>
-                        <Button Content="Read File"
-                                Width="100"
-                                Margin="0,0,8,8"
-                                Click="ReadFileButton_Click"/>
-                        <Button Content="Echo"
-                                Width="100"
-                                Margin="0,0,8,8"
-                                Click="EchoButton_Click"/>
-                        <Button Content="Clear Output"
-                                Width="100"
-                                Margin="0,0,8,8"
-                                Click="ClearOutputButton_Click"/>
-                        <Button Content="Set Workspace"
-                                Width="120"
-                                Margin="0,0,8,8"
-                                Click="SetWorkspaceButton_Click"/>
-			<Button Content="Show Memory"
-       				Width="110"
-        			Margin="0,0,8,8"
-        			Click="ShowMemoryButton_Click"/>
-                    </WrapPanel>
+                            <WrapPanel Grid.Row="1" Margin="0,0,0,10">
+                                <Button Content="List Folder"
+                                        Width="100"
+                                        Margin="0,0,8,8"
+                                        Click="ListFolderButton_Click"/>
+                                <Button Content="Read File"
+                                        Width="100"
+                                        Margin="0,0,8,8"
+                                        Click="ReadFileButton_Click"/>
+                                <Button Content="Echo"
+                                        Width="100"
+                                        Margin="0,0,8,8"
+                                        Click="EchoButton_Click"/>
+                                <Button Content="Save Output"
+                                        Width="110"
+                                        Margin="0,0,8,8"
+                                        Click="SaveOutputButton_Click"/>
+                                <Button Content="Clear Output"
+                                        Width="100"
+                                        Margin="0,0,8,8"
+                                        Click="ClearOutputButton_Click"/>
+                                <Button Content="Set Workspace"
+                                        Width="120"
+                                        Margin="0,0,8,8"
+                                        Click="SetWorkspaceButton_Click"/>
+                                <Button Content="Show Memory"
+                                        Width="110"
+                                        Margin="0,0,8,8"
+                                        Click="ShowMemoryButton_Click"/>
+                                <Button Content="Show Artifacts"
+                                        Width="120"
+                                        Margin="0,0,8,8"
+                                        Click="ShowArtifactsButton_Click"/>
+                            </WrapPanel>
 
-                    <TextBox Grid.Row="2"
-                             x:Name="OutputTextBox"
-                             AcceptsReturn="True"
-                             VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Auto"
-                             TextWrapping="Wrap"
-                             IsReadOnly="True"
-                             FontFamily="Consolas"/>
-                </Grid>
+                            <TextBox Grid.Row="2"
+                                     x:Name="OutputTextBox"
+                                     AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     TextWrapping="Wrap"
+                                     IsReadOnly="True"
+                                     FontFamily="Consolas"/>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="Models">
+                        <ScrollViewer Margin="0,6,0,0"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <Border BorderBrush="#E7E7E7"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="10"
+                                        Margin="0,0,0,10">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Row="0"
+                                                    Grid.Column="0"
+                                                    Grid.ColumnSpan="2"
+                                                    Margin="0,0,0,10">
+                                            <TextBlock Text="Models"
+                                                       FontSize="18"
+                                                       FontWeight="Bold"/>
+                                            <TextBlock Text="Configure endpoint, role-based model selection, and embedder backend preparation."
+                                                       FontSize="11"
+                                                       Opacity="0.72"
+                                                       Margin="0,2,0,0"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="1"
+                                                    Grid.Column="0"
+                                                    Margin="0,0,10,0">
+                                            <TextBlock Text="Endpoint"
+                                                       FontWeight="Bold"/>
+                                            <TextBox x:Name="EndpointTextBox"
+                                                     Margin="0,4,0,0"
+                                                     Height="28"/>
+                                        </StackPanel>
+
+                                        <Button Grid.Row="1"
+                                                Grid.Column="1"
+                                                x:Name="TestConnectionButton"
+                                                Content="Test"
+                                                Height="32"
+                                                Width="90"
+                                                Margin="0,22,0,0"
+                                                VerticalAlignment="Top"
+                                                Click="TestConnectionButton_Click"/>
+
+                                        <StackPanel Grid.Row="2"
+                                                    Grid.Column="0"
+                                                    Grid.ColumnSpan="2"
+                                                    Margin="0,10,0,0">
+                                            <TextBlock Text="Status"
+                                                       FontWeight="Bold"/>
+                                            <TextBlock x:Name="StatusTextBlock"
+                                                       Text="Not tested"
+                                                       Margin="0,6,0,0"
+                                                       VerticalAlignment="Center"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Border BorderBrush="#E7E7E7"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="10"
+                                        Margin="0,0,0,10">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0"
+                                                   Text="Model Roles"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,0,0,10"/>
+
+                                        <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                                            <TextBlock Text="Coder Model"
+                                                       FontWeight="Bold"/>
+                                            <ComboBox x:Name="CoderModelComboBox"
+                                                      Margin="0,4,0,0"
+                                                      Height="28"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"
+                                                      DisplayMemberPath="Name"
+                                                      SelectedValuePath="Name"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="2" Margin="0,0,0,10">
+                                            <TextBlock Text="Intake Model"
+                                                       FontWeight="Bold"/>
+                                            <ComboBox x:Name="IntakeModelComboBox"
+                                                      Margin="0,4,0,0"
+                                                      Height="28"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"
+                                                      DisplayMemberPath="Name"
+                                                      SelectedValuePath="Name"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="3">
+                                            <TextBlock Text="Embedder Model"
+                                                       FontWeight="Bold"/>
+                                            <ComboBox x:Name="EmbedderModelComboBox"
+                                                      Margin="0,4,0,0"
+                                                      Height="28"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"
+                                                      DisplayMemberPath="Name"
+                                                      SelectedValuePath="Name"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Border BorderBrush="#E7E7E7"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="10">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0"
+                                                   Text="Embedder Backend"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,0,0,10"/>
+
+                                        <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                                            <TextBlock Text="Retrieval Backend"
+                                                       FontWeight="Bold"/>
+                                            <ComboBox x:Name="EmbedderBackendComboBox"
+                                                      Margin="0,4,0,0"
+                                                      Height="28"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="2" Margin="0,0,0,10">
+                                            <TextBlock Text="Qdrant Endpoint"
+                                                       FontWeight="Bold"/>
+                                            <TextBox x:Name="QdrantEndpointTextBox"
+                                                     Margin="0,4,0,0"
+                                                     Height="28"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="3">
+                                            <TextBlock Text="Qdrant Collection"
+                                                       FontWeight="Bold"/>
+                                            <TextBox x:Name="QdrantCollectionTextBox"
+                                                     Margin="0,4,0,0"
+                                                     Height="28"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <TabItem Header="Taskboards">
+                        <Grid Margin="0,6,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="1.45*"/>
+                                <RowDefinition Height="1.1*"/>
+                            </Grid.RowDefinitions>
+
+                            <WrapPanel Grid.Row="0" Margin="0,0,0,10">
+                                <Button Content="Refresh"
+                                        Width="90"
+                                        Margin="0,0,8,8"
+                                        Click="RefreshTaskboardsButton_Click"/>
+                                <Button x:Name="ActivateTaskboardButton"
+                                        Content="Activate Selected"
+                                        Width="130"
+                                        Margin="0,0,8,8"
+                                        Click="ActivateTaskboardButton_Click"/>
+                                <Button x:Name="ArchiveSelectedTaskboardButton"
+                                        Content="Archive Selected"
+                                        Width="130"
+                                        Margin="0,0,8,8"
+                                        Click="ArchiveSelectedTaskboardButton_Click"/>
+                                <Button x:Name="DeleteSelectedTaskboardButton"
+                                        Content="Delete Selected"
+                                        Width="120"
+                                        Margin="0,0,8,8"
+                                        Click="DeleteSelectedTaskboardButton_Click"/>
+                                <Button x:Name="ClearRejectedTaskboardsButton"
+                                        Content="Clear Rejected"
+                                        Width="120"
+                                        Margin="0,0,8,8"
+                                        Click="ClearRejectedTaskboardsButton_Click"/>
+                                <Button x:Name="ClearInactiveTaskboardsButton"
+                                        Content="Clear Inactive"
+                                        Width="120"
+                                        Margin="0,0,8,8"
+                                        Click="ClearInactiveTaskboardsButton_Click"/>
+                                <Button x:Name="RunActivePlanButton"
+                                        Content="Run Active Plan"
+                                        Width="120"
+                                        Margin="0,0,8,8"
+                                        Click="RunActivePlanButton_Click"/>
+                                <Button x:Name="RunSelectedBatchButton"
+                                        Content="Run Selected Batch"
+                                        Width="130"
+                                        Margin="0,0,8,8"
+                                        Click="RunSelectedBatchButton_Click"/>
+                                <Button x:Name="InspectTaskboardRawButton"
+                                        Content="Show Raw"
+                                        Width="90"
+                                        Margin="0,0,8,8"
+                                        Click="InspectTaskboardRawButton_Click"/>
+                                <Button x:Name="InspectTaskboardParsedButton"
+                                        Content="Show Parsed"
+                                        Width="100"
+                                        Margin="0,0,8,8"
+                                        Click="InspectTaskboardParsedButton_Click"/>
+                                <Button x:Name="InspectTaskboardValidationButton"
+                                        Content="Show Validation"
+                                        Width="120"
+                                        Margin="0,0,8,8"
+                                        Click="InspectTaskboardValidationButton_Click"/>
+                            </WrapPanel>
+
+                            <Grid Grid.Row="1" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2.35*" MinWidth="320"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="1*" MinWidth="240" MaxWidth="360"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0"
+                                        BorderBrush="#E7E7E7"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="10">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+
+                                        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                            <TextBlock Text="Taskboard State"
+                                                       FontSize="18"
+                                                       FontWeight="Bold"/>
+                                            <TextBlock x:Name="TaskboardActiveTitleTextBlock"
+                                                       Text="Active plan: (none)"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardRunTargetTextBlock"
+                                                       Text="Run target: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.82"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeStatusTextBlock"
+                                                       Text="Runtime: (none)"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Opacity="0.82"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,6,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimePhaseTextBlock"
+                                                       Text="Current phase: (none)"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Opacity="0.85"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeCurrentStepTextBlock"
+                                                       Text="Current step: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.78"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeNextStepTextBlock"
+                                                       Text="Next unresolved work: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.78"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeLastResultTextBlock"
+                                                       Text="Last result: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.74"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,6,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeLaneBlockerTextBlock"
+                                                       Text="Lane blocker: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.74"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeGoalBlockerTextBlock"
+                                                       Text="Goal blocker: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.74"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardLastActionTextBlock"
+                                                       Text="Last action: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,6,0,0"/>
+                                        </StackPanel>
+
+                                        <ScrollViewer Grid.Row="1"
+                                                      x:Name="TaskboardStateScrollViewer"
+                                                      VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled"
+                                                      CanContentScroll="False">
+                                            <StackPanel x:Name="TaskboardStateContentPanel"
+                                                        Width="{Binding ElementName=TaskboardStateScrollViewer, Path=ViewportWidth}">
+                                                <TextBlock x:Name="TaskboardImportStatusTextBlock"
+                                                           Text="Imports: 0"
+                                                           FontSize="11"
+                                                           Opacity="0.75"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardValidationTextBlock"
+                                                       Text="Validation: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardSelectedStatusTextBlock"
+                                                       Text="Selection: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.75"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardActionsTextBlock"
+                                                       Text="Actions: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeFreshnessTextBlock"
+                                                       Text="Runtime snapshot: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeEntryTextBlock"
+                                                       Text="Run entry: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeActivationHandoffTextBlock"
+                                                       Text="Activation handoff: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeLatestStepTextBlock"
+                                                       Text="Latest step: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.75"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeLastCompletedStepTextBlock"
+                                                       Text="Last completed step: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeProgressTextBlock"
+                                                       Text="Progress: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,6,0,0"/>
+                                            <TextBlock Text="Run Summary"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Opacity="0.82"
+                                                       Margin="0,8,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeSummaryModeTextBlock"
+                                                       Text="Summary mode: (none)"
+                                                       FontSize="10"
+                                                       Opacity="0.62"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeSummaryTextBlock"
+                                                       Text="A deterministic run summary will appear after the current run reaches a truthful terminal state."
+                                                       FontSize="11"
+                                                       Opacity="0.76"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,3,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeBaselineTextBlock"
+                                                       Text="Baseline: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeBlockerOriginTextBlock"
+                                                       Text="Blocker origin: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeBuildProfileTextBlock"
+                                                       Text="Build profile: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeDecompositionTextBlock"
+                                                       Text="Decomposition: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeWorkFamilyTextBlock"
+                                                       Text="Work family: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeCoverageTextBlock"
+                                                       Text="Coverage: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeLaneTextBlock"
+                                                       Text="Execution lane: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                            <TextBlock x:Name="TaskboardRuntimeGoalTextBlock"
+                                                       Text="Execution goal: (none)"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Column="2"
+                                        BorderBrush="#E7E7E7"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="8"
+                                        MinWidth="240"
+                                        MaxWidth="420">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0"
+                                                   Text="Recent Activity"
+                                                   FontWeight="Bold"
+                                                   Margin="0,0,0,6"/>
+                                        <TextBox Grid.Row="1"
+                                                 x:Name="TaskboardRecentActivityTextBox"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 HorizontalScrollBarVisibility="Disabled"
+                                                 IsReadOnly="True"
+                                                 FontFamily="Consolas"/>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid Grid.Row="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.95*" MinWidth="240"/>
+                                    <ColumnDefinition Width="1.45*" MinWidth="320"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0"
+                                               Text="Imports"
+                                               FontWeight="Bold"
+                                               Margin="0,0,0,6"/>
+
+                                    <ListBox Grid.Row="1"
+                                             x:Name="TaskboardImportsListBox"
+                                             SelectionChanged="TaskboardImportsListBox_SelectionChanged"
+                                             HorizontalContentAlignment="Stretch">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#E7E7E7"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Padding="6"
+                                                    Margin="0,0,0,6">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               FontWeight="Bold"
+                                                               TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding State}"
+                                                               FontSize="11"
+                                                               Opacity="0.8"
+                                                               Margin="0,4,0,0"/>
+                                                    <TextBlock Text="{Binding ValidationOutcome}"
+                                                               FontSize="11"
+                                                               Opacity="0.75"
+                                                               Margin="0,2,0,0"/>
+                                                    <TextBlock Text="{Binding ValidationSummary}"
+                                                               FontSize="11"
+                                                               Opacity="0.7"
+                                                               TextWrapping="Wrap"
+                                                               Margin="0,2,0,0"/>
+                                                    <TextBlock Text="{Binding UpdatedUtc}"
+                                                               FontSize="10"
+                                                               Opacity="0.55"
+                                                               Margin="0,2,0,0"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                    <TextBlock Grid.Row="2"
+                                               Text="Batches"
+                                               FontWeight="Bold"
+                                               Margin="0,10,0,6"/>
+                                    <ListBox Grid.Row="3"
+                                             x:Name="TaskboardBatchesListBox"
+                                             DisplayMemberPath="DisplayLabel"
+                                             SelectionChanged="TaskboardBatchesListBox_SelectionChanged"
+                                             PreviewMouseLeftButtonDown="TaskboardBatchesListBox_PreviewMouseLeftButtonDown"
+                                             PreviewMouseWheel="TaskboardBatchesListBox_PreviewMouseWheel"/>
+                                </Grid>
+
+                                <Border Grid.Column="1"
+                                        BorderBrush="#E7E7E7"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="8"
+                                        Margin="10,0,0,0">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0"
+                                                   Text="Active Plan / Batch Details (Raw / Debug)"
+                                                   FontWeight="Bold"
+                                                   Margin="0,0,0,6"/>
+                                        <TextBox Grid.Row="1"
+                                                 x:Name="TaskboardDetailsTextBox"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 HorizontalScrollBarVisibility="Disabled"
+                                                 IsReadOnly="True"
+                                                 FontFamily="Consolas"
+                                                 PreviewMouseLeftButtonDown="TaskboardDetailsTextBox_PreviewMouseLeftButtonDown"
+                                                 PreviewMouseWheel="TaskboardDetailsTextBox_PreviewMouseWheel"
+                                                 PreviewKeyDown="TaskboardDetailsTextBox_PreviewKeyDown"/>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
             </Border>
         </Grid>
 
-        <Border Grid.Row="2"
+        <Border Grid.Row="1"
                 BorderBrush="#DDD"
                 BorderThickness="1"
                 CornerRadius="6"

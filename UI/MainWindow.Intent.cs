@@ -17,6 +17,7 @@ public partial class MainWindow
         try
         {
             _currentIntent = _ramDbService.LoadCurrentIntent(_workspaceService.WorkspaceRoot);
+            AppendPendingDatabaseMessages();
             RefreshIntentUi();
         }
         catch (Exception ex)
@@ -37,9 +38,28 @@ public partial class MainWindow
         if (string.IsNullOrWhiteSpace(cleaned))
             throw new ArgumentException("Intent text is required.", nameof(objective));
 
-        _currentIntent.Title = BuildIntentTitle(cleaned);
-        _currentIntent.Objective = cleaned;
-        _currentIntent.Notes = "";
+        SaveIntentRecordToWorkspace(BuildIntentTitle(cleaned), cleaned, "");
+    }
+
+    private void SaveIntentDraftToWorkspace(IntentDraft draft)
+    {
+        if (draft is null)
+            throw new ArgumentNullException(nameof(draft));
+
+        if (!_workspaceService.HasWorkspace())
+            throw new InvalidOperationException("Set a workspace before saving intent.");
+
+        SaveIntentRecordToWorkspace(
+            string.IsNullOrWhiteSpace(draft.Title) ? BuildIntentTitle(draft.Objective) : draft.Title,
+            draft.Objective,
+            BuildIntentNotes(draft));
+    }
+
+    private void SaveIntentRecordToWorkspace(string title, string objective, string notes)
+    {
+        _currentIntent.Title = title;
+        _currentIntent.Objective = objective;
+        _currentIntent.Notes = notes;
 
         _ramDbService.SaveCurrentIntent(_workspaceService.WorkspaceRoot, _currentIntent);
 
@@ -47,7 +67,7 @@ public partial class MainWindow
         {
             SourceType = "intent",
             SourceId = "current",
-            SummaryText = cleaned
+            SummaryText = objective
         });
 
         RefreshIntentUi();
@@ -78,5 +98,27 @@ public partial class MainWindow
             return singleLine;
 
         return singleLine[..max].TrimEnd() + "...";
+    }
+
+    private static string BuildIntentNotes(IntentDraft draft)
+    {
+        var lines = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(draft.TargetStack))
+        {
+            lines.Add($"Likely stack: {draft.TargetStack}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(draft.ImplementationDirection))
+        {
+            lines.Add($"Implementation direction: {draft.ImplementationDirection}");
+        }
+
+        foreach (var question in draft.OpenQuestions.Take(2))
+        {
+            lines.Add($"Open question: {question}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 }

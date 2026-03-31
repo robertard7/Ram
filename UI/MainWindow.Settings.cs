@@ -11,13 +11,20 @@ public partial class MainWindow
     private void LoadSettings()
     {
         _settings = _settingsService.Load();
+        _modelRoleConfigurationService.Normalize(_settings);
 
         EndpointTextBox.Text = _settings.Endpoint;
     }
 
-    private void ApplySavedModelToUi()
+    private void ApplySavedModelSettingsToUi()
     {
-        ModelComboBox.Text = _settings.Model;
+        IntakeModelComboBox.Text = _settings.IntakeModel;
+        CoderModelComboBox.Text = _settings.CoderModel;
+        EmbedderModelComboBox.Text = _settings.EmbedderModel;
+        EmbedderBackendComboBox.ItemsSource = _modelRoleConfigurationService.GetEmbedderBackends();
+        EmbedderBackendComboBox.Text = _settings.EmbedderBackend;
+        QdrantEndpointTextBox.Text = _settings.QdrantEndpoint;
+        QdrantCollectionTextBox.Text = _settings.QdrantCollection;
     }
 
     private void ApplySavedWorkspaceToUi()
@@ -26,6 +33,8 @@ public partial class MainWindow
         {
             WorkspaceTextBlock.Text = "Workspace: (not set)";
             LoadIntentFromWorkspace();
+            LoadActiveArtifactFromWorkspace();
+            RefreshTaskboardUi();
             return;
         }
 
@@ -35,6 +44,7 @@ public partial class MainWindow
             WorkspaceTextBlock.Text = $"Workspace: {_workspaceService.WorkspaceRoot}";
             AddMessage("system", $"Workspace restored: {_workspaceService.WorkspaceRoot}");
             AppendOutput($"Workspace restored: {_workspaceService.WorkspaceRoot}");
+            PrepareActiveWorkspaceSurface("restore workspace");
         }
         catch
         {
@@ -43,16 +53,72 @@ public partial class MainWindow
         }
 
         LoadIntentFromWorkspace();
+        LoadActiveArtifactFromWorkspace();
+        RefreshTaskboardUi();
     }
 
     private void SaveSettings()
     {
-        _settings.Endpoint = EndpointTextBox.Text.Trim();
-        _settings.Model = GetSelectedModel();
-        _settings.WorkspaceRoot = _workspaceService.HasWorkspace()
-            ? _workspaceService.WorkspaceRoot
-            : "";
+        ResolveCurrentAppSettingsSnapshot(persist: true);
+    }
 
-        _settingsService.Save(_settings);
+    private AppSettings ResolveCurrentAppSettingsSnapshot(bool persist)
+    {
+        var snapshot = CloneSettings(_settings);
+        snapshot.Endpoint = EndpointTextBox.Text.Trim();
+        snapshot.IntakeModel = GetSelectedIntakeModel();
+        snapshot.CoderModel = GetSelectedCoderModel();
+        snapshot.EmbedderModel = GetSelectedEmbedderModel();
+        snapshot.Model = snapshot.CoderModel;
+        snapshot.EmbedderBackend = GetSelectedEmbedderBackend();
+        snapshot.QdrantEndpoint = QdrantEndpointTextBox.Text.Trim();
+        snapshot.QdrantCollection = QdrantCollectionTextBox.Text.Trim();
+        snapshot.WorkspaceRoot = _workspaceService.HasWorkspace()
+            ? _workspaceService.WorkspaceRoot
+            : snapshot.WorkspaceRoot;
+
+        _modelRoleConfigurationService.Normalize(snapshot);
+
+        if (persist)
+        {
+            _settings = snapshot;
+            _settingsService.Save(_settings);
+        }
+
+        return snapshot;
+    }
+
+    private static AppSettings CloneSettings(AppSettings source)
+    {
+        return new AppSettings
+        {
+            Endpoint = source.Endpoint,
+            Model = source.Model,
+            IntakeModel = source.IntakeModel,
+            CoderModel = source.CoderModel,
+            EmbedderModel = source.EmbedderModel,
+            EmbedderBackend = source.EmbedderBackend,
+            QdrantEndpoint = source.QdrantEndpoint,
+            QdrantCollection = source.QdrantCollection,
+            WorkspaceRoot = source.WorkspaceRoot,
+            EnableAdvisoryAgents = source.EnableAdvisoryAgents,
+            EnableSummaryAgent = source.EnableSummaryAgent,
+            EnableSuggestionAgent = source.EnableSuggestionAgent,
+            EnableBuildProfileAgent = source.EnableBuildProfileAgent,
+            EnablePhraseFamilyAgent = source.EnablePhraseFamilyAgent,
+            EnableTemplateSelectorAgent = source.EnableTemplateSelectorAgent,
+            EnableForensicsAgent = source.EnableForensicsAgent,
+            SummaryAgentModel = source.SummaryAgentModel,
+            SuggestionAgentModel = source.SuggestionAgentModel,
+            BuildProfileAgentModel = source.BuildProfileAgentModel,
+            PhraseFamilyAgentModel = source.PhraseFamilyAgentModel,
+            TemplateSelectorAgentModel = source.TemplateSelectorAgentModel,
+            ForensicsAgentModel = source.ForensicsAgentModel,
+            AgentTimeoutSeconds = source.AgentTimeoutSeconds,
+            AutoActivateValidatedTaskboardWhenNoActivePlan = source.AutoActivateValidatedTaskboardWhenNoActivePlan,
+            ConfirmBeforeReplacingActivePlan = source.ConfirmBeforeReplacingActivePlan,
+            ShowArchivedTaskboards = source.ShowArchivedTaskboards,
+            TaskboardActionMessageDedupeWindowSeconds = source.TaskboardActionMessageDedupeWindowSeconds
+        };
     }
 }

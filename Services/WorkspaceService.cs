@@ -30,7 +30,12 @@ public sealed class WorkspaceService
         if (!HasWorkspace())
             return false;
 
+        var workspaceRoot = Path.GetFullPath(_workspaceRoot);
         var fullPath = Path.GetFullPath(path);
-        return fullPath.StartsWith(_workspaceRoot, StringComparison.OrdinalIgnoreCase);
+        var workspacePrefix = workspaceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        return string.Equals(fullPath, workspaceRoot, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(workspacePrefix, StringComparison.OrdinalIgnoreCase);
     }
 }

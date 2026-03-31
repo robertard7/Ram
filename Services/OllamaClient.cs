@@ -17,6 +17,93 @@ public sealed class OllamaClient
         Timeout = TimeSpan.FromMinutes(2)
     };
 
+    public async Task<List<List<float>>> GenerateEmbeddingsAsync(
+        string endpoint,
+        string model,
+        IReadOnlyList<string> inputs,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new ArgumentException("Endpoint is required.", nameof(endpoint));
+
+        if (string.IsNullOrWhiteSpace(model))
+            throw new ArgumentException("Model is required.", nameof(model));
+
+        if (inputs is null || inputs.Count == 0)
+            throw new ArgumentException("At least one input is required.", nameof(inputs));
+
+        var baseUri = endpoint.TrimEnd('/');
+
+        try
+        {
+            var embedPayload = new
+            {
+                model,
+                input = inputs
+            };
+
+            using var embedContent = new StringContent(
+                JsonSerializer.Serialize(embedPayload),
+                Encoding.UTF8,
+                "application/json");
+            using var embedResponse = await Http.PostAsync($"{baseUri}/api/embed", embedContent, cancellationToken).ConfigureAwait(false);
+            var embedBody = await embedResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!embedResponse.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException(
+                    $"Ollama embed returned {(int)embedResponse.StatusCode} {embedResponse.ReasonPhrase}.{Environment.NewLine}{embedBody}");
+            }
+
+            using var embedDoc = JsonDocument.Parse(embedBody);
+            if (embedDoc.RootElement.TryGetProperty("embeddings", out var embeddingsElement)
+                && embeddingsElement.ValueKind == JsonValueKind.Array)
+            {
+                return embeddingsElement.EnumerateArray()
+                    .Select(ParseEmbeddingVector)
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // Fallback to the older single-prompt embeddings endpoint below.
+        }
+
+        var fallbackResults = new List<List<float>>();
+        foreach (var input in inputs)
+        {
+            var fallbackPayload = new
+            {
+                model,
+                prompt = input
+            };
+
+            using var fallbackContent = new StringContent(
+                JsonSerializer.Serialize(fallbackPayload),
+                Encoding.UTF8,
+                "application/json");
+            using var fallbackResponse = await Http.PostAsync($"{baseUri}/api/embeddings", fallbackContent, cancellationToken).ConfigureAwait(false);
+            var fallbackBody = await fallbackResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!fallbackResponse.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException(
+                    $"Ollama embeddings returned {(int)fallbackResponse.StatusCode} {fallbackResponse.ReasonPhrase}.{Environment.NewLine}{fallbackBody}");
+            }
+
+            using var fallbackDoc = JsonDocument.Parse(fallbackBody);
+            if (!fallbackDoc.RootElement.TryGetProperty("embedding", out var embeddingElement)
+                || embeddingElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException("Ollama embeddings response did not include an embedding vector.");
+            }
+
+            fallbackResults.Add(ParseEmbeddingVector(embeddingElement));
+        }
+
+        return fallbackResults;
+    }
+
     public async Task<string> GenerateAsync(string endpoint, string model, string prompt, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
@@ -40,9 +127,9 @@ public sealed class OllamaClient
 
         var json = JsonSerializer.Serialize(payload);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var response = await Http.PostAsync(url, content, cancellationToken);
+        using var response = await Http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -70,7 +157,7 @@ public sealed class OllamaClient
 
         try
         {
-            using var response = await Http.GetAsync(url, cancellationToken);
+            using var response = await Http.GetAsync(url, cancellationToken).ConfigureAwait(false);
             return response.IsSuccessStatusCode;
         }
         catch
@@ -87,8 +174,8 @@ public sealed class OllamaClient
         var baseUri = endpoint.TrimEnd('/');
         var url = $"{baseUri}/api/tags";
 
-        using var response = await Http.GetAsync(url, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var response = await Http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -105,6 +192,15 @@ public sealed class OllamaClient
             .Where(x => !string.IsNullOrWhiteSpace(x.Name))
             .Select(x => new OllamaModelInfo { Name = x.Name })
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<float> ParseEmbeddingVector(JsonElement element)
+    {
+        return element.EnumerateArray()
+            .Select(value => value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out var number)
+                ? number
+                : (float)0)
             .ToList();
     }
 }

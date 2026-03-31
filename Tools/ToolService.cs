@@ -64,22 +64,24 @@ public sealed class ToolService
         return text[..maxChars] + Environment.NewLine + Environment.NewLine + "[TRUNCATED]";
     }
 
-    public string PickFolderWithDialog()
+    public string PickFolderWithDialog(string initialDirectory = "")
     {
         var dialog = new OpenFolderDialog
         {
-            Title = "Select folder"
+            Title = "Select folder",
+            InitialDirectory = initialDirectory
         };
 
         return dialog.ShowDialog() == true ? dialog.FolderName : "";
     }
 
-    public string PickTextFileWithDialog()
+    public string PickTextFileWithDialog(string initialDirectory = "")
     {
         var dialog = new OpenFileDialog
         {
             Title = "Select text file",
             Filter = "Text files|*.txt;*.md;*.json;*.cs;*.xaml;*.xml;*.log|All files|*.*",
+            InitialDirectory = initialDirectory,
             CheckFileExists = true,
             Multiselect = false
         };

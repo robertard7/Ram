@@ -8,8 +8,18 @@ public sealed class SettingsService
 {
     private readonly string _settingsPath;
 
-    public SettingsService()
+    public SettingsService(string? settingsPath = null)
     {
+        if (!string.IsNullOrWhiteSpace(settingsPath))
+        {
+            var customDirectory = Path.GetDirectoryName(settingsPath);
+            if (!string.IsNullOrWhiteSpace(customDirectory))
+                Directory.CreateDirectory(customDirectory);
+
+            _settingsPath = settingsPath;
+            return;
+        }
+
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "RAM");

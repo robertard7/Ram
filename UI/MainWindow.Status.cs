@@ -1,9 +1,17 @@
+using RAM.Services;
+
 namespace RAM;
 
 public partial class MainWindow
 {
     private void AppendOutput(string text)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => AppendOutput(text));
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(OutputTextBox.Text))
         {
             OutputTextBox.AppendText(Environment.NewLine + Environment.NewLine);
@@ -15,6 +23,12 @@ public partial class MainWindow
 
     private void SetBusy(bool isBusy)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => SetBusy(isBusy));
+            return;
+        }
+
         SendButton.IsEnabled = !isBusy;
         TestConnectionButton.IsEnabled = !isBusy;
     }
@@ -24,20 +38,29 @@ public partial class MainWindow
         try
         {
             SetBusy(true);
+            SaveSettings();
 
             var ok = await _ollamaClient.TestConnectionAsync(EndpointTextBox.Text.Trim());
-            StatusTextBlock.Text = ok ? "Connected" : "Not Connected";
+            var retrievalService = new RamRetrievalService(_ramDbService, _settingsService, _ollamaClient);
+            var retrievalStatus = await retrievalService.TestBackendAsync(_settings);
+            var qdrantStatusText = !string.Equals(_settings.EmbedderBackend, "qdrant", StringComparison.OrdinalIgnoreCase)
+                ? "Disabled"
+                : string.IsNullOrWhiteSpace(_settings.QdrantEndpoint) || string.IsNullOrWhiteSpace(_settings.QdrantCollection)
+                    ? "Not Configured"
+                    : retrievalStatus.ConnectionOk
+                        ? retrievalStatus.CollectionReady ? "Ready" : "Connected"
+                        : "Not Connected";
+            StatusTextBlock.Text = $"Coder: {(ok ? "Connected" : "Not Connected")} | Qdrant: {qdrantStatusText}";
 
             AppendOutput(ok
                 ? $"Connection OK: {EndpointTextBox.Text.Trim()}"
                 : $"Connection failed: {EndpointTextBox.Text.Trim()}");
+            AppendOutput($"Qdrant status: {retrievalStatus.StatusSummary}");
 
             if (ok)
             {
                 await LoadModelsAsync();
             }
-
-            SaveSettings();
         }
         catch (Exception ex)
         {
