@@ -75,6 +75,7 @@ public sealed class PlanRepairTool
             lines.Add("C# patch contract:");
             lines.Add($"Modification intent: {DisplayValue(patchContract.ModificationIntent)}");
             lines.Add($"Target surface type: {DisplayValue(patchContract.TargetSurfaceType)}");
+            lines.Add($"Target project: {DisplayValue(patchContract.TargetProject)}");
             lines.Add($"Mutation family: {DisplayValue(patchContract.MutationFamily)}");
             lines.Add($"Allowed edit scope: {DisplayValue(patchContract.AllowedEditScope)}");
             lines.Add($"Edit scope: {DisplayValue(patchContract.EditScope)}");
@@ -82,6 +83,12 @@ public sealed class PlanRepairTool
             lines.Add($"Warning policy: {DisplayValue(patchContract.WarningPolicyMode)}");
             lines.Add($"Follow-through mode: {DisplayValue(patchContract.FollowThroughMode)}");
             lines.Add($"Scope summary: {DisplayValue(patchContract.ScopeSummary)}");
+            if (!string.IsNullOrWhiteSpace(patchContract.IntentResolutionVersion))
+                lines.Add($"Intent resolver: {patchContract.IntentResolutionVersion}");
+            if (!string.IsNullOrWhiteSpace(patchContract.EditSurfacePlannerVersion))
+                lines.Add($"Edit-surface planner: {patchContract.EditSurfacePlannerVersion}");
+            if (patchContract.IntentClassificationReasons.Count > 0)
+                lines.Add($"Intent reasons: {string.Join(", ", patchContract.IntentClassificationReasons)}");
             if (patchContract.TargetSymbols.Count > 0)
                 lines.Add($"Target symbols: {string.Join(", ", patchContract.TargetSymbols)}");
             if (patchContract.TargetFiles.Count > 0)
@@ -90,6 +97,12 @@ public sealed class PlanRepairTool
                 lines.Add($"Supporting files: {string.Join(", ", patchContract.SupportingFiles)}");
             if (patchContract.VerificationRequirements.Count > 0)
                 lines.Add($"Verification requirements: {string.Join(", ", patchContract.VerificationRequirements)}");
+            if (patchContract.VerificationSurfaces.Count > 0)
+                lines.Add($"Verification surfaces: {string.Join(", ", patchContract.VerificationSurfaces)}");
+            if (patchContract.OutOfScopeSurfaces.Count > 0)
+                lines.Add($"Out-of-scope surfaces: {string.Join(", ", patchContract.OutOfScopeSurfaces)}");
+            if (patchContract.PlanningReasons.Count > 0)
+                lines.Add($"Planning reasons: {string.Join(", ", patchContract.PlanningReasons)}");
         }
 
         lines.Add($"Artifact synced: {artifact.RelativePath}");

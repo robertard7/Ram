@@ -24,7 +24,9 @@ public sealed class CSharpPatchFoundationService
         "/obj/"
     ];
 
+    private readonly CSharpEditSurfacePlannerService _editSurfacePlannerService = new();
     private readonly CSharpGenerationArgumentResolverService _generationArgumentResolverService = new();
+    private readonly CSharpModificationIntentResolverService _modificationIntentResolverService = new();
     private readonly FileIdentityService _fileIdentityService = new();
     private readonly RamDbService _ramDbService = new();
     private readonly WorkspacePreparationQueryService _workspacePreparationQueryService = new();
@@ -38,13 +40,23 @@ public sealed class CSharpPatchFoundationService
         if (!IsCSharpApplicable(proposal.TargetFilePath, proposal.TargetProjectPath))
             return null;
 
+        var truthProject = _workspaceTruthQueryService.GetProjectByPathOrName(_ramDbService, workspaceRoot, proposal.TargetProjectPath);
+        var targetSolutionPath = NormalizeRelativePath(FirstNonEmpty(
+            truthProject?.SolutionPaths.FirstOrDefault(),
+            ExtractSolutionPath(proposal.TargetProjectPath)));
+        var intent = _modificationIntentResolverService.ResolveForExplicitIntent(
+            "repair",
+            proposal.TargetFilePath,
+            proposal.ProposedActionType,
+            targetProject: truthProject?.ProjectName ?? proposal.TargetProjectPath,
+            repairCause: FirstNonEmpty(proposal.FailureSummary, proposal.FailureKind));
         var contract = BuildContractCore(
             workspaceRoot,
             ResolveMutationFamily("", proposal.FailureKind),
             ResolveOperationKind(proposal.ProposedActionType, ""),
             proposal.TargetFilePath,
             proposal.TargetProjectPath,
-            ExtractSolutionPath(proposal.TargetProjectPath),
+            targetSolutionPath,
             proposal.FailureKind,
             proposal.ProposalId,
             proposal.SourceArtifactId,
@@ -59,24 +71,44 @@ public sealed class CSharpPatchFoundationService
         contract.RetrievalResultArtifactRelativePath = proposal.RetrievalResultArtifactRelativePath;
         contract.RetrievalContextPacketArtifactRelativePath = proposal.RetrievalContextPacketArtifactRelativePath;
         contract.RetrievalIndexBatchArtifactRelativePath = proposal.RetrievalIndexBatchArtifactRelativePath;
+
+        var targetSymbols = new[] { proposal.ReferencedSymbolName, proposal.ReferencedMemberName }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var planner = BuildPlanner(
+            workspaceRoot,
+            intent,
+            proposal.TargetFilePath,
+            truthProject,
+            [proposal.TargetProjectPath, targetSolutionPath],
+            targetSymbols,
+            registrationSurface: "",
+            testUpdateScope: string.Equals(proposal.FailureKind, "test_failure", StringComparison.OrdinalIgnoreCase) ? "targeted_test_rerun" : "",
+            requestedNamespaceConstraints: BuildNamespaceConstraints(proposal.TargetFilePath, proposal.TargetProjectPath),
+            requestedDependencyUpdateRequirements: BuildDependencyRequirements(proposal.ProposedActionType));
+
         ApplyModificationMetadata(
             workspaceRoot,
             contract,
             modificationIntent: "repair",
-            targetSurfaceType: ResolveTargetSurfaceType(contract.TargetFiles.FirstOrDefault(), proposal.TargetProjectPath, proposal.ProposedActionType),
-            targetSymbols: [proposal.ReferencedSymbolName, proposal.ReferencedMemberName],
-            supportingFiles: [proposal.TargetProjectPath, contract.TargetSolutionPath],
-            followThroughMode: "repair_followthrough",
-            completionContract: BuildRepairCompletionContract(proposal),
-            preserveConstraints: ["path_identity", "project_identity", "namespace_identity", "public_api_identity"],
-            verificationRequirements: BuildVerificationRequirementsForContract(contract, contract.TargetProjectPath, contract.TargetSolutionPath),
-            retrievalContextRequirements: ["workspace_truth_required", "workspace_retrieval_current_preferred", "repair_context_packet_preferred"],
-            repairCause: FirstNonEmpty(proposal.FailureSummary, proposal.FailureKind),
+            targetSurfaceType: FirstNonEmpty(intent.TargetSurfaceType, ResolveTargetSurfaceType(contract.TargetFiles.FirstOrDefault(), proposal.TargetProjectPath, proposal.ProposedActionType)),
+            targetSymbols: planner.RelatedSymbols.Count == 0 ? targetSymbols : planner.RelatedSymbols,
+            supportingFiles: planner.SupportingFiles.Count == 0 ? [proposal.TargetProjectPath, targetSolutionPath] : planner.SupportingFiles,
+            followThroughMode: FirstNonEmpty(planner.FollowThroughMode, "repair_followthrough"),
+            completionContract: planner.CompletionContract.Count == 0 ? BuildRepairCompletionContract(proposal) : planner.CompletionContract,
+            preserveConstraints: planner.PreserveConstraints.Count == 0 ? ["path_identity", "project_identity", "namespace_identity", "public_api_identity"] : planner.PreserveConstraints,
+            verificationRequirements: MergeVerificationRequirements(
+                BuildVerificationRequirementsForContract(contract, contract.TargetProjectPath, contract.TargetSolutionPath),
+                planner.VerificationSurfaces),
+            retrievalContextRequirements: planner.RetrievalContextRequirements.Count == 0 ? ["workspace_truth_required", "workspace_retrieval_current_preferred", "repair_context_packet_preferred"] : planner.RetrievalContextRequirements,
+            repairCause: FirstNonEmpty(intent.RepairCause, proposal.FailureSummary, proposal.FailureKind),
             featureName: "",
-            registrationSurface: "",
-            testUpdateScope: string.Equals(proposal.FailureKind, "test_failure", StringComparison.OrdinalIgnoreCase) ? "targeted_test_rerun" : "",
-            namespaceConstraints: BuildNamespaceConstraints(contract.TargetFiles.FirstOrDefault(), proposal.TargetProjectPath),
-            dependencyUpdateRequirements: BuildDependencyRequirements(proposal.ProposedActionType));
+            registrationSurface: planner.RegistrationSurface,
+            testUpdateScope: FirstNonEmpty(planner.TestUpdateScope, string.Equals(proposal.FailureKind, "test_failure", StringComparison.OrdinalIgnoreCase) ? "targeted_test_rerun" : ""),
+            namespaceConstraints: planner.NamespaceConstraints.Count == 0 ? BuildNamespaceConstraints(contract.TargetFiles.FirstOrDefault(), proposal.TargetProjectPath) : planner.NamespaceConstraints,
+            dependencyUpdateRequirements: planner.DependencyUpdateRequirements.Count == 0 ? BuildDependencyRequirements(proposal.ProposedActionType) : planner.DependencyUpdateRequirements);
+        ApplyPlannerMetadata(contract, truthProject?.ProjectName, intent, planner);
         return contract;
     }
 
@@ -89,36 +121,60 @@ public sealed class CSharpPatchFoundationService
         string rationale,
         string mutationFamily = "feature_update")
     {
+        var truthProject = _workspaceTruthQueryService.GetProjectByPathOrName(_ramDbService, workspaceRoot, targetProjectPath);
+        var resolvedSolutionPath = NormalizeRelativePath(FirstNonEmpty(targetSolutionPath, truthProject?.SolutionPaths.FirstOrDefault()));
+        var intent = _modificationIntentResolverService.ResolveForExplicitIntent(
+            "feature_update",
+            targetFilePath,
+            operationKind,
+            roleHint: operationKind,
+            targetProject: truthProject?.ProjectName ?? targetProjectPath,
+            featureName: NormalizeToken(operationKind));
         var contract = BuildContractCore(
             workspaceRoot,
             ResolveMutationFamily(mutationFamily, ""),
             ResolveOperationKind(operationKind, ""),
             targetFilePath,
             targetProjectPath,
-            targetSolutionPath,
+            resolvedSolutionPath,
             "",
             "",
             0,
             "",
             rationale);
+        var planner = BuildPlanner(
+            workspaceRoot,
+            intent,
+            targetFilePath,
+            truthProject,
+            [targetProjectPath, resolvedSolutionPath],
+            [],
+            registrationSurface: "",
+            testUpdateScope: "",
+            requestedNamespaceConstraints: BuildNamespaceConstraints(targetFilePath, targetProjectPath),
+            requestedDependencyUpdateRequirements: []);
+
         ApplyModificationMetadata(
             workspaceRoot,
             contract,
             modificationIntent: "feature_update",
-            targetSurfaceType: ResolveTargetSurfaceType(targetFilePath, targetProjectPath, operationKind),
-            targetSymbols: [],
-            supportingFiles: [targetProjectPath, targetSolutionPath],
-            followThroughMode: "planned_supporting_surfaces",
-            completionContract: ["bounded_feature_extension", "supporting_surface_followthrough", "verification_followthrough"],
-            preserveConstraints: ["path_identity", "project_identity", "namespace_identity", "public_api_identity"],
-            verificationRequirements: BuildVerificationRequirementsForContract(contract, targetProjectPath, targetSolutionPath),
-            retrievalContextRequirements: ["workspace_truth_required", "workspace_retrieval_current_preferred", "scoped_feature_update_context"],
+            targetSurfaceType: FirstNonEmpty(intent.TargetSurfaceType, ResolveTargetSurfaceType(targetFilePath, targetProjectPath, operationKind)),
+            targetSymbols: planner.RelatedSymbols,
+            supportingFiles: planner.SupportingFiles.Count == 0 ? [targetProjectPath, resolvedSolutionPath] : planner.SupportingFiles,
+            followThroughMode: FirstNonEmpty(planner.FollowThroughMode, "planned_supporting_surfaces"),
+            completionContract: planner.CompletionContract.Count == 0 ? ["bounded_feature_extension", "supporting_surface_followthrough", "verification_followthrough"] : planner.CompletionContract,
+            preserveConstraints: planner.PreserveConstraints.Count == 0 ? ["path_identity", "project_identity", "namespace_identity", "public_api_identity"] : planner.PreserveConstraints,
+            verificationRequirements: MergeVerificationRequirements(
+                BuildVerificationRequirementsForContract(contract, targetProjectPath, resolvedSolutionPath),
+                planner.VerificationSurfaces),
+            retrievalContextRequirements: planner.RetrievalContextRequirements.Count == 0 ? ["workspace_truth_required", "workspace_retrieval_current_preferred", "scoped_feature_update_context"] : planner.RetrievalContextRequirements,
             repairCause: "",
-            featureName: NormalizeToken(operationKind),
-            registrationSurface: "",
-            testUpdateScope: "",
-            namespaceConstraints: BuildNamespaceConstraints(targetFilePath, targetProjectPath),
-            dependencyUpdateRequirements: []);
+            featureName: FirstNonEmpty(intent.FeatureName, NormalizeToken(operationKind)),
+            registrationSurface: planner.RegistrationSurface,
+            testUpdateScope: planner.TestUpdateScope,
+            namespaceConstraints: planner.NamespaceConstraints.Count == 0 ? BuildNamespaceConstraints(targetFilePath, targetProjectPath) : planner.NamespaceConstraints,
+            dependencyUpdateRequirements: planner.DependencyUpdateRequirements);
+        ApplyPlannerMetadata(contract, truthProject?.ProjectName, intent, planner);
         return contract;
     }
 
@@ -130,17 +186,21 @@ public sealed class CSharpPatchFoundationService
         CSharpGeneratedOutputPlanRecord? generationPlan = null)
     {
         var normalizedTargetFile = NormalizeRelativePath(targetFilePath);
-        var requestedIntent = _generationArgumentResolverService.NormalizeModificationIntent(GetArgument(request, "modification_intent"));
-        var modificationIntent = FirstNonEmpty(
-            requestedIntent,
-            targetExists ? "patch" : "");
-        if (string.IsNullOrWhiteSpace(modificationIntent))
-            return null;
-
         var truthProject = ResolveTargetProject(workspaceRoot, request, normalizedTargetFile);
         var targetProjectPath = NormalizeRelativePath(truthProject?.RelativePath ?? "");
         var targetSolutionPath = ResolveTargetSolutionPath(request, truthProject);
+        var intent = _modificationIntentResolverService.ResolveForWrite(
+            request,
+            targetExists,
+            normalizedTargetFile,
+            truthProject?.ProjectName ?? GetArgument(request, "target_project"),
+            targetProjectPath);
+        var modificationIntent = intent.ModificationIntent;
+        if (string.IsNullOrWhiteSpace(modificationIntent))
+            return null;
+
         var operationKind = FirstNonEmpty(
+            intent.OperationKind,
             NormalizeToken(GetArgument(request, "pattern")),
             NormalizeToken(GetArgument(request, "file_role")),
             "write_file");
@@ -163,38 +223,58 @@ public sealed class CSharpPatchFoundationService
             "",
             BuildWriteRationale(request, normalizedTargetFile, modificationIntent));
 
+        var generationRequest = request.Clone();
+        generationRequest.Arguments["modification_intent"] = modificationIntent;
+        if (!string.IsNullOrWhiteSpace(intent.FeatureName))
+            generationRequest.Arguments["feature_name"] = intent.FeatureName;
+        if (!string.IsNullOrWhiteSpace(intent.RepairCause))
+            generationRequest.Arguments["repair_cause"] = intent.RepairCause;
+
         var generationArguments = _generationArgumentResolverService.Resolve(
-            request,
+            generationRequest,
             normalizedTargetFile,
             GetArgument(request, "namespace"),
             truthProject?.ProjectName ?? GetArgument(request, "target_project"),
             targetProjectPath,
-            _workspacePreparationQueryService.GetRetrievalReadinessStatus(_ramDbService, workspaceRoot),
-            FirstNonEmpty(
-                _workspacePreparationQueryService.LoadLatestPreparationState(_ramDbService, workspaceRoot)?.TruthFingerprint,
-                _workspaceTruthQueryService.LoadLatestSnapshot(_ramDbService, workspaceRoot)?.SnapshotId,
-                _workspaceTruthQueryService.LoadLatestProjectGraph(_ramDbService, workspaceRoot)?.GraphId));
-        var supportingFiles = BuildSupportingFileList(request, generationPlan);
-        var registrationSurface = NormalizeRelativePath(GetArgument(request, "registration_surface"));
-        var testUpdateScope = GetArgument(request, "test_update_scope");
+            ResolveRetrievalReadinessStatus(workspaceRoot),
+            ResolveWorkspaceTruthFingerprint(workspaceRoot));
+        var targetSymbols = BuildTargetSymbols(generationArguments);
+        var supportingFiles = BuildSupportingFileList(generationRequest, generationPlan);
+        var registrationSurface = NormalizeRelativePath(GetArgument(generationRequest, "registration_surface"));
+        var testUpdateScope = GetArgument(generationRequest, "test_update_scope");
+        var planner = BuildPlanner(
+            workspaceRoot,
+            intent,
+            normalizedTargetFile,
+            truthProject,
+            supportingFiles,
+            targetSymbols,
+            registrationSurface,
+            testUpdateScope,
+            BuildNamespaceConstraints(normalizedTargetFile, targetProjectPath, generationArguments.NamespaceName),
+            SplitList(GetArgument(generationRequest, "dependency_update_requirements")));
+
         ApplyModificationMetadata(
             workspaceRoot,
             contract,
             modificationIntent,
-            ResolveTargetSurfaceType(normalizedTargetFile, targetProjectPath, generationArguments.Pattern),
-            BuildTargetSymbols(generationArguments),
-            supportingFiles,
-            FirstNonEmpty(GetArgument(request, "followthrough_mode"), generationArguments.FollowThroughMode, supportingFiles.Count > 0 ? "planned_supporting_surfaces" : "single_file"),
-            generationArguments.CompletionContract,
-            BuildPreserveConstraints(generationArguments, targetProjectPath),
-            BuildVerificationRequirementsForWrite(request, targetProjectPath, targetSolutionPath),
-            BuildRetrievalRequirements(request, modificationIntent),
-            GetArgument(request, "repair_cause"),
-            FirstNonEmpty(GetArgument(request, "feature_name"), generationArguments.FeatureName),
-            registrationSurface,
-            testUpdateScope,
-            BuildNamespaceConstraints(normalizedTargetFile, targetProjectPath, generationArguments.NamespaceName),
-            SplitList(GetArgument(request, "dependency_update_requirements")));
+            FirstNonEmpty(intent.TargetSurfaceType, ResolveTargetSurfaceType(normalizedTargetFile, targetProjectPath, generationArguments.Pattern)),
+            planner.RelatedSymbols.Count == 0 ? targetSymbols : planner.RelatedSymbols,
+            planner.SupportingFiles.Count == 0 ? supportingFiles : planner.SupportingFiles,
+            FirstNonEmpty(GetArgument(generationRequest, "followthrough_mode"), planner.FollowThroughMode, generationArguments.FollowThroughMode, supportingFiles.Count > 0 ? "planned_supporting_surfaces" : "single_file"),
+            planner.CompletionContract.Count == 0 ? generationArguments.CompletionContract : planner.CompletionContract,
+            planner.PreserveConstraints.Count == 0 ? BuildPreserveConstraints(generationArguments, targetProjectPath) : planner.PreserveConstraints,
+            MergeVerificationRequirements(
+                BuildVerificationRequirementsForWrite(generationRequest, targetProjectPath, targetSolutionPath),
+                planner.VerificationSurfaces),
+            planner.RetrievalContextRequirements.Count == 0 ? BuildRetrievalRequirements(generationRequest, modificationIntent) : planner.RetrievalContextRequirements,
+            FirstNonEmpty(GetArgument(generationRequest, "repair_cause"), intent.RepairCause),
+            FirstNonEmpty(GetArgument(generationRequest, "feature_name"), generationArguments.FeatureName, intent.FeatureName),
+            FirstNonEmpty(planner.RegistrationSurface, registrationSurface),
+            FirstNonEmpty(planner.TestUpdateScope, testUpdateScope),
+            planner.NamespaceConstraints.Count == 0 ? BuildNamespaceConstraints(normalizedTargetFile, targetProjectPath, generationArguments.NamespaceName) : planner.NamespaceConstraints,
+            planner.DependencyUpdateRequirements.Count == 0 ? SplitList(GetArgument(generationRequest, "dependency_update_requirements")) : planner.DependencyUpdateRequirements);
+        ApplyPlannerMetadata(contract, truthProject?.ProjectName, intent, planner);
         return contract;
     }
 
@@ -274,6 +354,38 @@ public sealed class CSharpPatchFoundationService
             draft.CanApplyLocally ? "apply_patch_draft" : "manual_review_required",
             "verify_patch_draft"
         };
+        var plannedEdits = new List<CSharpPatchPlannedEditRecord>
+        {
+            new()
+            {
+                FilePath = NormalizeRelativePath(draft.TargetFilePath),
+                DraftKind = draft.DraftKind,
+                StartLine = draft.StartLine,
+                EndLine = draft.EndLine,
+                CanApplyLocally = draft.CanApplyLocally,
+                IntentSummary = FirstNonEmpty(draft.RationaleSummary, proposal.Rationale, proposal.Title)
+            }
+        };
+
+        foreach (var supportingFile in contract.SupportingFiles)
+        {
+            var normalizedSupporting = NormalizeRelativePath(supportingFile);
+            if (string.IsNullOrWhiteSpace(normalizedSupporting)
+                || string.Equals(normalizedSupporting, NormalizeRelativePath(draft.TargetFilePath), StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            plannedEdits.Add(new CSharpPatchPlannedEditRecord
+            {
+                FilePath = normalizedSupporting,
+                DraftKind = "supporting_surface_followthrough",
+                StartLine = 1,
+                EndLine = 0,
+                CanApplyLocally = false,
+                IntentSummary = FirstNonEmpty(contract.Rationale, proposal.Rationale, proposal.Title)
+            });
+        }
 
         return new CSharpPatchPlanRecord
         {
@@ -283,6 +395,7 @@ public sealed class CSharpPatchFoundationService
             CreatedUtc = DateTime.UtcNow.ToString("O"),
             ModificationIntent = contract.ModificationIntent,
             TargetSurfaceType = contract.TargetSurfaceType,
+            TargetProject = contract.TargetProject,
             MutationFamily = contract.MutationFamily,
             OperationKind = contract.OperationKind,
             AllowedEditScope = contract.AllowedEditScope,
@@ -306,26 +419,19 @@ public sealed class CSharpPatchFoundationService
             DependencyUpdateRequirements = [.. contract.DependencyUpdateRequirements],
             RetrievalReadinessStatus = contract.RetrievalReadinessStatus,
             WorkspaceTruthFingerprint = contract.WorkspaceTruthFingerprint,
-            EditSurfaceFiles = contract.EditSurfaceFiles.Count == 0
-                ? []
-                : [.. contract.EditSurfaceFiles],
-            PlannedEdits =
-            [
-                new CSharpPatchPlannedEditRecord
-                {
-                    FilePath = NormalizeRelativePath(draft.TargetFilePath),
-                    DraftKind = draft.DraftKind,
-                    StartLine = draft.StartLine,
-                    EndLine = draft.EndLine,
-                    CanApplyLocally = draft.CanApplyLocally,
-                    IntentSummary = FirstNonEmpty(draft.RationaleSummary, proposal.Rationale, proposal.Title)
-                }
-            ],
+            IntentResolutionVersion = contract.IntentResolutionVersion,
+            IntentClassificationReasons = contract.IntentClassificationReasons.Count == 0 ? [] : [.. contract.IntentClassificationReasons],
+            EditSurfacePlannerVersion = contract.EditSurfacePlannerVersion,
+            VerificationSurfaces = contract.VerificationSurfaces.Count == 0 ? [] : [.. contract.VerificationSurfaces],
+            OutOfScopeSurfaces = contract.OutOfScopeSurfaces.Count == 0 ? [] : [.. contract.OutOfScopeSurfaces],
+            PlanningReasons = contract.PlanningReasons.Count == 0 ? [] : [.. contract.PlanningReasons],
+            EditSurfaceFiles = contract.EditSurfaceFiles.Count == 0 ? [] : [.. contract.EditSurfaceFiles],
+            PlannedEdits = plannedEdits,
             ValidationSteps = validationSteps,
             RerunRequirements = [.. contract.RerunRequirements],
             SourceProposalId = proposal.ProposalId,
             SourcePatchDraftId = draft.DraftId,
-            Summary = $"Planned {DisplayValue(contract.MutationFamily)} edit for `{NormalizeRelativePath(draft.TargetFilePath)}` within `{DisplayValue(contract.AllowedEditScope)}`.",
+            Summary = $"Planned {DisplayValue(contract.MutationFamily)} edit for `{NormalizeRelativePath(draft.TargetFilePath)}` across {plannedEdits.Count} bounded surface(s).",
             Rationale = FirstNonEmpty(draft.RationaleSummary, proposal.Rationale, contract.Rationale),
             RetrievalBackend = contract.RetrievalBackend,
             RetrievalEmbedderModel = contract.RetrievalEmbedderModel,
@@ -336,12 +442,8 @@ public sealed class CSharpPatchFoundationService
             RetrievalResultArtifactRelativePath = contract.RetrievalResultArtifactRelativePath,
             RetrievalContextPacketArtifactRelativePath = contract.RetrievalContextPacketArtifactRelativePath,
             RetrievalIndexBatchArtifactRelativePath = contract.RetrievalIndexBatchArtifactRelativePath,
-            RelatedArtifactIds = contract.RelatedArtifactIds.Count == 0
-                ? []
-                : [.. contract.RelatedArtifactIds],
-            RelatedArtifactPaths = contract.RelatedArtifactPaths.Count == 0
-                ? []
-                : [.. contract.RelatedArtifactPaths]
+            RelatedArtifactIds = contract.RelatedArtifactIds.Count == 0 ? [] : [.. contract.RelatedArtifactIds],
+            RelatedArtifactPaths = contract.RelatedArtifactPaths.Count == 0 ? [] : [.. contract.RelatedArtifactPaths]
         };
     }
 
@@ -376,6 +478,27 @@ public sealed class CSharpPatchFoundationService
             }
         };
 
+        foreach (var supportingFile in contract.SupportingFiles)
+        {
+            var normalizedSupporting = NormalizeRelativePath(supportingFile);
+            if (string.IsNullOrWhiteSpace(normalizedSupporting)
+                || string.Equals(normalizedSupporting, NormalizeRelativePath(primaryTargetPath), StringComparison.OrdinalIgnoreCase)
+                || plannedEdits.Any(edit => string.Equals(edit.FilePath, normalizedSupporting, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            plannedEdits.Add(new CSharpPatchPlannedEditRecord
+            {
+                FilePath = normalizedSupporting,
+                DraftKind = "supporting_surface_followthrough",
+                StartLine = 1,
+                EndLine = 0,
+                CanApplyLocally = true,
+                IntentSummary = contract.Rationale
+            });
+        }
+
         if (generationPlan is not null)
         {
             foreach (var companion in generationPlan.CompanionArtifacts)
@@ -383,9 +506,13 @@ public sealed class CSharpPatchFoundationService
                 if (string.IsNullOrWhiteSpace(companion.RelativePath))
                     continue;
 
+                var normalizedCompanion = NormalizeRelativePath(companion.RelativePath);
+                if (plannedEdits.Any(edit => string.Equals(edit.FilePath, normalizedCompanion, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
                 plannedEdits.Add(new CSharpPatchPlannedEditRecord
                 {
-                    FilePath = NormalizeRelativePath(companion.RelativePath),
+                    FilePath = normalizedCompanion,
                     DraftKind = "supporting_surface_write",
                     StartLine = 1,
                     EndLine = 0,
@@ -403,6 +530,7 @@ public sealed class CSharpPatchFoundationService
             CreatedUtc = DateTime.UtcNow.ToString("O"),
             ModificationIntent = contract.ModificationIntent,
             TargetSurfaceType = contract.TargetSurfaceType,
+            TargetProject = contract.TargetProject,
             MutationFamily = contract.MutationFamily,
             OperationKind = contract.OperationKind,
             AllowedEditScope = contract.AllowedEditScope,
@@ -426,6 +554,12 @@ public sealed class CSharpPatchFoundationService
             DependencyUpdateRequirements = [.. contract.DependencyUpdateRequirements],
             RetrievalReadinessStatus = contract.RetrievalReadinessStatus,
             WorkspaceTruthFingerprint = contract.WorkspaceTruthFingerprint,
+            IntentResolutionVersion = contract.IntentResolutionVersion,
+            IntentClassificationReasons = contract.IntentClassificationReasons.Count == 0 ? [] : [.. contract.IntentClassificationReasons],
+            EditSurfacePlannerVersion = contract.EditSurfacePlannerVersion,
+            VerificationSurfaces = contract.VerificationSurfaces.Count == 0 ? [] : [.. contract.VerificationSurfaces],
+            OutOfScopeSurfaces = contract.OutOfScopeSurfaces.Count == 0 ? [] : [.. contract.OutOfScopeSurfaces],
+            PlanningReasons = contract.PlanningReasons.Count == 0 ? [] : [.. contract.PlanningReasons],
             EditSurfaceFiles = contract.EditSurfaceFiles.Count == 0 ? [] : [.. contract.EditSurfaceFiles],
             PlannedEdits = plannedEdits,
             ValidationSteps = validationSteps,
@@ -459,10 +593,10 @@ public sealed class CSharpPatchFoundationService
         string sourceArtifactType,
         string rationale)
     {
-        var normalizedFile = NormalizeRelativePath(targetFilePath);
-        var normalizedProject = NormalizeRelativePath(targetProjectPath);
-        var normalizedSolution = NormalizeRelativePath(targetSolutionPath);
-        var scopeDecision = EvaluateScope(workspaceRoot, normalizedFile, normalizedProject, normalizedSolution);
+        var normalizedTargetPath = NormalizeRelativePath(targetFilePath);
+        var normalizedProjectPath = NormalizeRelativePath(targetProjectPath);
+        var normalizedSolutionPath = NormalizeRelativePath(targetSolutionPath);
+        var scope = EvaluateScope(workspaceRoot, normalizedTargetPath, normalizedProjectPath, normalizedSolutionPath);
 
         return new CSharpPatchWorkContractRecord
         {
@@ -471,22 +605,23 @@ public sealed class CSharpPatchFoundationService
             CreatedUtc = DateTime.UtcNow.ToString("O"),
             MutationFamily = mutationFamily,
             OperationKind = operationKind,
-            AllowedEditScope = FirstNonEmpty(scopeDecision.AllowedEditScope, ResolveEditScope(normalizedFile)),
-            ScopeApproved = scopeDecision.ScopeApproved,
-            ScopeReasonCode = scopeDecision.ReasonCode,
-            ScopeSummary = scopeDecision.Summary,
-            ValidationRequirements = BuildValidationRequirements(sourceFailureKind, normalizedProject, normalizedSolution),
-            RerunRequirements = BuildRerunRequirements(sourceFailureKind, normalizedProject, normalizedSolution),
-            WarningPolicyMode = "track_only",
-            TargetSolutionPath = normalizedSolution,
-            TargetProjectPath = normalizedProject,
-            TargetFiles = string.IsNullOrWhiteSpace(normalizedFile) ? [] : [normalizedFile],
-            AllowedExtensions = [.. AllowedExtensions.OrderBy(current => current, StringComparer.OrdinalIgnoreCase)],
-            SourceFailureKind = sourceFailureKind ?? "",
-            SourceProposalId = sourceProposalId ?? "",
+            AllowedEditScope = scope.AllowedEditScope,
+            EditScope = scope.AllowedEditScope,
+            ScopeApproved = scope.ScopeApproved,
+            ScopeReasonCode = scope.ReasonCode,
+            ScopeSummary = scope.Summary,
+            ValidationRequirements = BuildValidationRequirements(sourceFailureKind, normalizedProjectPath, normalizedSolutionPath),
+            RerunRequirements = BuildRerunRequirements(sourceFailureKind, normalizedProjectPath, normalizedSolutionPath),
+            TargetSolutionPath = normalizedSolutionPath,
+            TargetProjectPath = normalizedProjectPath,
+            TargetFiles = string.IsNullOrWhiteSpace(normalizedTargetPath) ? [] : [normalizedTargetPath],
+            AllowedExtensions = [.. AllowedExtensions.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)],
+            SourceFailureKind = sourceFailureKind,
+            SourceProposalId = sourceProposalId,
             SourceArtifactId = sourceArtifactId,
-            SourceArtifactType = sourceArtifactType ?? "",
-            Rationale = FirstNonEmpty(rationale, BuildDefaultRationale(mutationFamily, normalizedFile))
+            SourceArtifactType = sourceArtifactType,
+            Rationale = FirstNonEmpty(rationale, BuildDefaultRationale(mutationFamily, normalizedTargetPath)),
+            RelatedArtifactIds = sourceArtifactId > 0 ? [sourceArtifactId] : []
         };
     }
 
@@ -509,39 +644,19 @@ public sealed class CSharpPatchFoundationService
         IReadOnlyList<string> namespaceConstraints,
         IReadOnlyList<string> dependencyUpdateRequirements)
     {
-        var snapshot = _workspaceTruthQueryService.LoadLatestSnapshot(_ramDbService, workspaceRoot);
-        var projectGraph = _workspaceTruthQueryService.LoadLatestProjectGraph(_ramDbService, workspaceRoot);
-        var preparationState = _workspacePreparationQueryService.LoadLatestPreparationState(_ramDbService, workspaceRoot);
-        var retrievalCatalog = _workspacePreparationQueryService.LoadLatestRetrievalCatalog(_ramDbService, workspaceRoot);
-        var normalizedTargetFile = NormalizeRelativePath(contract.TargetFiles.FirstOrDefault());
-        var normalizedSupportingFiles = supportingFiles
-            .Select(NormalizeRelativePath)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Where(value => !string.Equals(value, normalizedTargetFile, StringComparison.OrdinalIgnoreCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var normalizedRegistrationSurface = NormalizeRelativePath(registrationSurface);
-        var normalizedVerificationRequirements = verificationRequirements
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var targetProject = ResolveProjectRecord(projectGraph, contract.TargetProjectPath, normalizedTargetFile);
-        var targetProjectPath = NormalizeRelativePath(FirstNonEmpty(contract.TargetProjectPath, targetProject?.RelativePath));
-        var targetSolutionPath = NormalizeRelativePath(FirstNonEmpty(contract.TargetSolutionPath, targetProject?.SolutionPaths.FirstOrDefault()));
-
-        contract.ModificationIntent = NormalizeModificationIntent(modificationIntent, contract.SourceFailureKind);
-        contract.TargetSurfaceType = FirstNonEmpty(targetSurfaceType, ResolveTargetSurfaceType(normalizedTargetFile, targetProjectPath, contract.OperationKind));
-        contract.TargetProjectPath = targetProjectPath;
-        contract.TargetSolutionPath = targetSolutionPath;
-        contract.SupportingFiles = normalizedSupportingFiles;
+        contract.ModificationIntent = modificationIntent;
+        contract.TargetSurfaceType = targetSurfaceType;
         contract.TargetSymbols = targetSymbols
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        contract.EditScope = normalizedSupportingFiles.Count > 0 || !string.IsNullOrWhiteSpace(normalizedRegistrationSurface)
-            ? "bounded_multi_surface_edit"
-            : contract.AllowedEditScope;
-        contract.FollowThroughMode = FirstNonEmpty(followThroughMode, normalizedSupportingFiles.Count > 0 ? "planned_supporting_surfaces" : "single_file");
+        contract.SupportingFiles = supportingFiles
+            .Select(NormalizeRelativePath)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Where(value => !contract.TargetFiles.Any(target => string.Equals(target, value, StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        contract.FollowThroughMode = FirstNonEmpty(followThroughMode, contract.SupportingFiles.Count > 0 ? "planned_supporting_surfaces" : "single_file");
         contract.CompletionContract = completionContract
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -550,18 +665,18 @@ public sealed class CSharpPatchFoundationService
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        contract.VerificationRequirements = normalizedVerificationRequirements.Count == 0
-            ? [.. contract.ValidationRequirements]
-            : normalizedVerificationRequirements;
+        contract.VerificationRequirements = verificationRequirements
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         contract.RetrievalContextRequirements = retrievalContextRequirements
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        contract.PreviewRequired = true;
-        contract.RepairCause = repairCause ?? "";
-        contract.FeatureName = featureName ?? "";
-        contract.RegistrationSurface = normalizedRegistrationSurface;
-        contract.TestUpdateScope = testUpdateScope ?? "";
+        contract.RepairCause = repairCause;
+        contract.FeatureName = featureName;
+        contract.RegistrationSurface = NormalizeRelativePath(registrationSurface);
+        contract.TestUpdateScope = testUpdateScope;
         contract.NamespaceConstraints = namespaceConstraints
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -570,67 +685,113 @@ public sealed class CSharpPatchFoundationService
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        contract.RetrievalReadinessStatus = FirstNonEmpty(
-            preparationState?.SyncStatus,
-            preparationState?.PreparationStatus,
-            _workspacePreparationQueryService.GetRetrievalReadinessStatus(_ramDbService, workspaceRoot));
-        contract.WorkspaceTruthFingerprint = FirstNonEmpty(
-            preparationState?.TruthFingerprint,
-            snapshot?.SnapshotId,
-            projectGraph?.GraphId);
+        contract.RetrievalReadinessStatus = ResolveRetrievalReadinessStatus(workspaceRoot);
+        contract.WorkspaceTruthFingerprint = ResolveWorkspaceTruthFingerprint(workspaceRoot);
         contract.EditSurfaceFiles = BuildEditSurfaceFiles(
-            normalizedTargetFile,
-            normalizedSupportingFiles,
-            normalizedRegistrationSurface,
-            contract.TargetSolutionPath,
+            workspaceRoot,
             contract.TargetProjectPath,
-            contract.TargetSymbols,
-            snapshot,
-            projectGraph,
-            retrievalCatalog);
+            contract.TargetFiles,
+            contract.SupportingFiles,
+            contract.TargetSymbols);
+    }
+
+    private void ApplyPlannerMetadata(
+        CSharpPatchWorkContractRecord contract,
+        string targetProjectName,
+        CSharpModificationIntentRecord intent,
+        CSharpEditSurfacePlanRecord planner)
+    {
+        contract.TargetProject = FirstNonEmpty(planner.TargetProject, targetProjectName);
+        contract.IntentResolutionVersion = intent.ResolverVersion;
+        contract.IntentClassificationReasons = intent.ClassificationReasons.Count == 0 ? [] : [.. intent.ClassificationReasons];
+        contract.EditSurfacePlannerVersion = planner.PlannerVersion;
+        contract.VerificationSurfaces = planner.VerificationSurfaces.Count == 0 ? [] : [.. planner.VerificationSurfaces];
+        contract.OutOfScopeSurfaces = planner.OutOfScopeSurfaces.Count == 0 ? [] : [.. planner.OutOfScopeSurfaces];
+        contract.PlanningReasons = planner.PlanningReasons.Count == 0 ? [] : [.. planner.PlanningReasons];
+        if (planner.TargetFiles.Count > 0)
+            contract.TargetFiles = [.. planner.TargetFiles];
+        if (planner.SupportingFiles.Count > 0)
+            contract.SupportingFiles = [.. planner.SupportingFiles];
+        if (planner.EditSurfaceFiles.Count > 0)
+            contract.EditSurfaceFiles = [.. planner.EditSurfaceFiles];
+        if (!string.IsNullOrWhiteSpace(planner.EditScope))
+            contract.EditScope = planner.EditScope;
+        if (!string.IsNullOrWhiteSpace(planner.FollowThroughMode))
+            contract.FollowThroughMode = planner.FollowThroughMode;
+        if (!string.IsNullOrWhiteSpace(planner.RegistrationSurface))
+            contract.RegistrationSurface = planner.RegistrationSurface;
+        if (!string.IsNullOrWhiteSpace(planner.TestUpdateScope))
+            contract.TestUpdateScope = planner.TestUpdateScope;
+        if (planner.RetrievalContextRequirements.Count > 0)
+            contract.RetrievalContextRequirements = [.. planner.RetrievalContextRequirements];
+        if (planner.CompletionContract.Count > 0)
+            contract.CompletionContract = [.. planner.CompletionContract];
+        if (planner.PreserveConstraints.Count > 0)
+            contract.PreserveConstraints = [.. planner.PreserveConstraints];
+        if (planner.NamespaceConstraints.Count > 0)
+            contract.NamespaceConstraints = [.. planner.NamespaceConstraints];
+        if (planner.DependencyUpdateRequirements.Count > 0)
+            contract.DependencyUpdateRequirements = [.. planner.DependencyUpdateRequirements];
+    }
+
+    private CSharpEditSurfacePlanRecord BuildPlanner(
+        string workspaceRoot,
+        CSharpModificationIntentRecord intent,
+        string targetFilePath,
+        WorkspaceProjectRecord? targetProject,
+        IReadOnlyList<string> requestedSupportingFiles,
+        IReadOnlyList<string> targetSymbols,
+        string registrationSurface,
+        string testUpdateScope,
+        IReadOnlyList<string> requestedNamespaceConstraints,
+        IReadOnlyList<string> requestedDependencyUpdateRequirements)
+    {
+        return _editSurfacePlannerService.BuildPlan(
+            workspaceRoot,
+            _workspaceTruthQueryService.LoadLatestSnapshot(_ramDbService, workspaceRoot),
+            _workspaceTruthQueryService.LoadLatestProjectGraph(_ramDbService, workspaceRoot),
+            _workspacePreparationQueryService.LoadLatestRetrievalCatalog(_ramDbService, workspaceRoot),
+            intent,
+            targetFilePath,
+            targetProject,
+            requestedSupportingFiles,
+            targetSymbols,
+            registrationSurface,
+            testUpdateScope,
+            requestedNamespaceConstraints,
+            requestedDependencyUpdateRequirements);
     }
 
     private List<CSharpModificationSurfaceRecord> BuildEditSurfaceFiles(
-        string targetFilePath,
+        string workspaceRoot,
+        string fallbackProjectPath,
+        IReadOnlyList<string> targetFiles,
         IReadOnlyList<string> supportingFiles,
-        string registrationSurface,
-        string targetSolutionPath,
-        string targetProjectPath,
-        IReadOnlyList<string> targetSymbols,
-        WorkspaceSnapshotRecord? snapshot,
-        WorkspaceProjectGraphRecord? projectGraph,
-        WorkspaceRetrievalCatalogRecord? retrievalCatalog)
+        IReadOnlyList<string> targetSymbols)
     {
+        var snapshot = _workspaceTruthQueryService.LoadLatestSnapshot(_ramDbService, workspaceRoot);
+        var projectGraph = _workspaceTruthQueryService.LoadLatestProjectGraph(_ramDbService, workspaceRoot);
+        var retrievalCatalog = _workspacePreparationQueryService.LoadLatestRetrievalCatalog(_ramDbService, workspaceRoot);
         var surfaces = new List<CSharpModificationSurfaceRecord>();
-        AddSurfaceRecord(surfaces, targetFilePath, "primary_target", "requested_target", targetSymbols, snapshot, projectGraph, retrievalCatalog, targetProjectPath);
-
+        foreach (var targetFile in targetFiles)
+            AddEditSurfaceRecord(surfaces, snapshot, projectGraph, retrievalCatalog, targetFile, "primary_target", "deterministic_target_surface", fallbackProjectPath, targetSymbols);
         foreach (var supportingFile in supportingFiles)
-            AddSurfaceRecord(surfaces, supportingFile, "supporting_surface", "completion_contract_support", targetSymbols, snapshot, projectGraph, retrievalCatalog, targetProjectPath);
-
-        if (!string.IsNullOrWhiteSpace(registrationSurface))
-            AddSurfaceRecord(surfaces, registrationSurface, "registration_surface", "explicit_registration_surface", targetSymbols, snapshot, projectGraph, retrievalCatalog, targetProjectPath);
-
-        if (!string.IsNullOrWhiteSpace(targetProjectPath))
-            AddSurfaceRecord(surfaces, targetProjectPath, "project_identity", "stage0_project_truth", targetSymbols, snapshot, projectGraph, retrievalCatalog, targetProjectPath);
-
-        if (!string.IsNullOrWhiteSpace(targetSolutionPath))
-            AddSurfaceRecord(surfaces, targetSolutionPath, "verification_target", "solution_scope_verification", targetSymbols, snapshot, projectGraph, retrievalCatalog, targetProjectPath);
-
+            AddEditSurfaceRecord(surfaces, snapshot, projectGraph, retrievalCatalog, supportingFile, "supporting_surface", "supporting_surface_followthrough", fallbackProjectPath, targetSymbols);
         return surfaces;
     }
 
-    private void AddSurfaceRecord(
+    private void AddEditSurfaceRecord(
         ICollection<CSharpModificationSurfaceRecord> surfaces,
-        string relativePath,
-        string surfaceRole,
-        string inclusionReason,
-        IReadOnlyList<string> targetSymbols,
         WorkspaceSnapshotRecord? snapshot,
         WorkspaceProjectGraphRecord? projectGraph,
         WorkspaceRetrievalCatalogRecord? retrievalCatalog,
-        string fallbackProjectPath)
+        string candidatePath,
+        string surfaceRole,
+        string inclusionReason,
+        string fallbackProjectPath,
+        IReadOnlyList<string> targetSymbols)
     {
-        var normalizedPath = NormalizeRelativePath(relativePath);
+        var normalizedPath = NormalizeRelativePath(candidatePath);
         if (string.IsNullOrWhiteSpace(normalizedPath)
             || surfaces.Any(current => string.Equals(current.RelativePath, normalizedPath, StringComparison.OrdinalIgnoreCase)))
         {
@@ -1002,19 +1163,6 @@ public sealed class CSharpPatchFoundationService
         return "workspace_surface";
     }
 
-    private static string NormalizeModificationIntent(string requestedIntent, string sourceFailureKind)
-    {
-        var normalized = NormalizeToken(requestedIntent);
-        if (normalized is "repair" or "patch" or "feature_update")
-            return normalized;
-
-        return NormalizeToken(sourceFailureKind) switch
-        {
-            "build_failure" or "test_failure" => "repair",
-            _ => "patch"
-        };
-    }
-
     private static string BuildWriteRationale(ToolRequest request, string targetFilePath, string modificationIntent)
     {
         var featureName = FirstNonEmpty(GetArgument(request, "feature_name"), GetArgument(request, "class_name"));
@@ -1025,6 +1173,40 @@ public sealed class CSharpPatchFoundationService
             "repair" => $"Repair `{DisplayValue(targetFilePath)}` using the `{DisplayValue(pattern)}` contract while preserving project and namespace identity.",
             _ => $"Patch `{DisplayValue(targetFilePath)}` using the `{DisplayValue(pattern)}` contract and bounded supporting surfaces."
         };
+    }
+
+    private string ResolveWorkspaceTruthFingerprint(string workspaceRoot)
+    {
+        return FirstNonEmpty(
+            _workspacePreparationQueryService.LoadLatestPreparationState(_ramDbService, workspaceRoot)?.TruthFingerprint,
+            _workspaceTruthQueryService.LoadLatestSnapshot(_ramDbService, workspaceRoot)?.SnapshotId,
+            _workspaceTruthQueryService.LoadLatestProjectGraph(_ramDbService, workspaceRoot)?.GraphId);
+    }
+
+    private string ResolveRetrievalReadinessStatus(string workspaceRoot)
+    {
+        return _workspacePreparationQueryService.GetRetrievalReadinessStatus(_ramDbService, workspaceRoot);
+    }
+
+    private static List<string> MergeVerificationRequirements(
+        IReadOnlyList<string> existing,
+        IReadOnlyList<string> verificationSurfaces)
+    {
+        var values = new List<string>();
+        values.AddRange(existing.Where(value => !string.IsNullOrWhiteSpace(value)));
+        foreach (var surface in verificationSurfaces)
+        {
+            var normalized = NormalizeRelativePath(surface);
+            if (string.IsNullOrWhiteSpace(normalized))
+                continue;
+            if (values.Any(value => value.EndsWith($":{normalized}", StringComparison.OrdinalIgnoreCase)))
+                continue;
+            values.Add($"verify:{normalized}");
+        }
+
+        return values
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static string GetArgument(ToolRequest request, string key)
@@ -1068,7 +1250,6 @@ public sealed class CSharpPatchFoundationService
         }
 
         if (normalized.Contains("/generated/", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("\\generated\\", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains(".g.", StringComparison.OrdinalIgnoreCase))
         {
             return "generated_scaffold_file_edit";
@@ -1133,7 +1314,7 @@ public sealed class CSharpPatchFoundationService
 
     private static string NormalizeRelativePath(string? path)
     {
-        return (path ?? "").Replace('\\', '/').Trim();
+        return (path ?? "").Replace('\\', '/').Trim().Trim('/');
     }
 
     private static string NormalizeToken(string? value)

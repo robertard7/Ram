@@ -62,16 +62,33 @@ public sealed class PreviewPatchDraftTool
             lines.Add("C# patch contract:");
             lines.Add($"Modification intent: {DisplayValue(patchContract.ModificationIntent)}");
             lines.Add($"Target surface type: {DisplayValue(patchContract.TargetSurfaceType)}");
+            lines.Add($"Target project: {DisplayValue(patchContract.TargetProject)}");
             lines.Add($"Mutation family: {DisplayValue(patchContract.MutationFamily)}");
             lines.Add($"Allowed edit scope: {DisplayValue(patchContract.AllowedEditScope)}");
             lines.Add($"Edit scope: {DisplayValue(patchContract.EditScope)}");
             lines.Add($"Follow-through mode: {DisplayValue(patchContract.FollowThroughMode)}");
             lines.Add($"Warning policy: {DisplayValue(patchContract.WarningPolicyMode)}");
             lines.Add($"Scope approved: {(patchContract.ScopeApproved ? "yes" : "no")}");
+            if (!string.IsNullOrWhiteSpace(patchContract.IntentResolutionVersion))
+                lines.Add($"Intent resolver: {patchContract.IntentResolutionVersion}");
+            if (!string.IsNullOrWhiteSpace(patchContract.EditSurfacePlannerVersion))
+                lines.Add($"Edit-surface planner: {patchContract.EditSurfacePlannerVersion}");
+            if (patchContract.IntentClassificationReasons.Count > 0)
+                lines.Add($"Intent reasons: {string.Join(", ", patchContract.IntentClassificationReasons)}");
             if (patchContract.TargetSymbols.Count > 0)
                 lines.Add($"Target symbols: {string.Join(", ", patchContract.TargetSymbols)}");
+            if (patchContract.TargetFiles.Count > 0)
+                lines.Add($"Target files: {string.Join(", ", patchContract.TargetFiles)}");
             if (patchContract.SupportingFiles.Count > 0)
                 lines.Add($"Supporting files: {string.Join(", ", patchContract.SupportingFiles)}");
+            if (patchContract.VerificationRequirements.Count > 0)
+                lines.Add($"Verification requirements: {string.Join(", ", patchContract.VerificationRequirements)}");
+            if (patchContract.VerificationSurfaces.Count > 0)
+                lines.Add($"Verification surfaces: {string.Join(", ", patchContract.VerificationSurfaces)}");
+            if (patchContract.OutOfScopeSurfaces.Count > 0)
+                lines.Add($"Out-of-scope surfaces: {string.Join(", ", patchContract.OutOfScopeSurfaces)}");
+            if (patchContract.PlanningReasons.Count > 0)
+                lines.Add($"Planning reasons: {string.Join(", ", patchContract.PlanningReasons)}");
         }
 
         if (patchPlan is not null)
@@ -79,11 +96,25 @@ public sealed class PreviewPatchDraftTool
             lines.Add("C# patch plan:");
             lines.Add($"Modification intent: {DisplayValue(patchPlan.ModificationIntent)}");
             lines.Add($"Target surface type: {DisplayValue(patchPlan.TargetSurfaceType)}");
+            lines.Add($"Target project: {DisplayValue(patchPlan.TargetProject)}");
             lines.Add($"Follow-through mode: {DisplayValue(patchPlan.FollowThroughMode)}");
+            if (!string.IsNullOrWhiteSpace(patchPlan.IntentResolutionVersion))
+                lines.Add($"Intent resolver: {patchPlan.IntentResolutionVersion}");
+            if (!string.IsNullOrWhiteSpace(patchPlan.EditSurfacePlannerVersion))
+                lines.Add($"Edit-surface planner: {patchPlan.EditSurfacePlannerVersion}");
+            if (patchPlan.IntentClassificationReasons.Count > 0)
+                lines.Add($"Intent reasons: {string.Join(", ", patchPlan.IntentClassificationReasons)}");
             lines.Add($"Validation steps: {string.Join(", ", patchPlan.ValidationSteps)}");
             if (patchPlan.VerificationRequirements.Count > 0)
                 lines.Add($"Verification requirements: {string.Join(", ", patchPlan.VerificationRequirements)}");
+            if (patchPlan.VerificationSurfaces.Count > 0)
+                lines.Add($"Verification surfaces: {string.Join(", ", patchPlan.VerificationSurfaces)}");
+            if (patchPlan.OutOfScopeSurfaces.Count > 0)
+                lines.Add($"Out-of-scope surfaces: {string.Join(", ", patchPlan.OutOfScopeSurfaces)}");
+            if (patchPlan.PlanningReasons.Count > 0)
+                lines.Add($"Planning reasons: {string.Join(", ", patchPlan.PlanningReasons)}");
             lines.Add($"Rerun requirements: {string.Join(", ", patchPlan.RerunRequirements)}");
+            lines.Add($"Planned edit count: {patchPlan.PlannedEdits.Count}");
             lines.Add($"Plan summary: {DisplayValue(patchPlan.Summary)}");
         }
 

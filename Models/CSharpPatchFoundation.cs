@@ -33,6 +33,7 @@ public sealed class CSharpPatchWorkContractRecord
     public string CreatedUtc { get; set; } = "";
     public string ModificationIntent { get; set; } = "";
     public string TargetSurfaceType { get; set; } = "";
+    public string TargetProject { get; set; } = "";
     public string MutationFamily { get; set; } = "";
     public string OperationKind { get; set; } = "";
     public string AllowedEditScope { get; set; } = "";
@@ -63,6 +64,12 @@ public sealed class CSharpPatchWorkContractRecord
     public List<string> DependencyUpdateRequirements { get; set; } = [];
     public string RetrievalReadinessStatus { get; set; } = "";
     public string WorkspaceTruthFingerprint { get; set; } = "";
+    public string IntentResolutionVersion { get; set; } = "";
+    public List<string> IntentClassificationReasons { get; set; } = [];
+    public string EditSurfacePlannerVersion { get; set; } = "";
+    public List<string> VerificationSurfaces { get; set; } = [];
+    public List<string> OutOfScopeSurfaces { get; set; } = [];
+    public List<string> PlanningReasons { get; set; } = [];
     public List<CSharpModificationSurfaceRecord> EditSurfaceFiles { get; set; } = [];
     public List<string> AllowedExtensions { get; set; } = [];
     public string SourceFailureKind { get; set; } = "";
@@ -102,6 +109,7 @@ public sealed class CSharpPatchPlanRecord
     public string CreatedUtc { get; set; } = "";
     public string ModificationIntent { get; set; } = "";
     public string TargetSurfaceType { get; set; } = "";
+    public string TargetProject { get; set; } = "";
     public string MutationFamily { get; set; } = "";
     public string OperationKind { get; set; } = "";
     public string AllowedEditScope { get; set; } = "";
@@ -125,6 +133,12 @@ public sealed class CSharpPatchPlanRecord
     public List<string> DependencyUpdateRequirements { get; set; } = [];
     public string RetrievalReadinessStatus { get; set; } = "";
     public string WorkspaceTruthFingerprint { get; set; } = "";
+    public string IntentResolutionVersion { get; set; } = "";
+    public List<string> IntentClassificationReasons { get; set; } = [];
+    public string EditSurfacePlannerVersion { get; set; } = "";
+    public List<string> VerificationSurfaces { get; set; } = [];
+    public List<string> OutOfScopeSurfaces { get; set; } = [];
+    public List<string> PlanningReasons { get; set; } = [];
     public List<CSharpModificationSurfaceRecord> EditSurfaceFiles { get; set; } = [];
     public List<CSharpPatchPlannedEditRecord> PlannedEdits { get; set; } = [];
     public List<string> ValidationSteps { get; set; } = [];
